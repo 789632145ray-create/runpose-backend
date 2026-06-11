@@ -20,7 +20,7 @@ import sys
 
 import joblib
 import numpy as np
-from pymongo import MongoClient
+from mongo_util import make_mongo_client
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
@@ -66,7 +66,7 @@ def session_features(doc: dict) -> list[float] | None:
 
 
 def load_dataset() -> tuple[np.ndarray, np.ndarray]:
-    client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=3000)
+    client = make_mongo_client(MONGO_URL)
     collection = client[MONGO_DB_NAME]["pose_sessions"]
 
     features: list[list[float]] = []

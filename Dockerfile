@@ -6,13 +6,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-COPY main.py train.py ./
+COPY main.py train.py mongo_util.py ./
 
 ENV POSE_RELOAD=0
 ENV POSE_DB_PATH=/data/app.db

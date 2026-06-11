@@ -29,7 +29,8 @@ from pydantic import BaseModel, Field
 
 # MongoDB（NoSQL，存放姿勢節點資料，供監督式學習使用）
 from bson import ObjectId
-from pymongo import MongoClient, DESCENDING
+from mongo_util import make_mongo_client
+from pymongo import DESCENDING
 
 # ---------------------------------------------------------------------------
 # 設定
@@ -272,7 +273,7 @@ def change_password(payload: ChangePasswordIn, username: str = Depends(current_u
 # 姿勢節點（NoSQL / MongoDB）：監督式學習資料收集
 # ---------------------------------------------------------------------------
 
-mongo_client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=3000)
+mongo_client = make_mongo_client(MONGO_URL)
 pose_sessions = mongo_client[MONGO_DB_NAME]["pose_sessions"]
 
 
