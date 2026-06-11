@@ -7,5 +7,4 @@ app.db-wal
 app.db-shm
 server.log
 server_test.log
-pose_quality_model.joblib
 dataset.csv

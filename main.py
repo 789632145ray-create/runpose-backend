@@ -216,6 +216,18 @@ def health_mongo() -> dict:
     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
 
 
+@app.get("/health/model")
+def health_model() -> dict:
+    try:
+        bundle = get_model()
+        classes = list(bundle["model"].classes_)
+        return {"status": "ok", "model": "pose_quality_model.joblib", "classes": classes}
+    except HTTPException as exc:
+        raise exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
 @app.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(creds: Credentials) -> TokenResponse:
     username = creds.username.strip().lower()
