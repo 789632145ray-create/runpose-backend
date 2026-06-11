@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pymongo>=4.6
+# 監督式學習訓練腳本 train.py 需要
+scikit-learn>=1.3
+numpy>=1.24
+joblib>=1.3
