@@ -220,10 +220,10 @@ def health_mongo() -> dict:
 def health_model() -> dict:
     try:
         bundle = get_model()
-        classes = list(bundle["model"].classes_)
+        classes = [int(c) for c in bundle["model"].classes_]
         return {"status": "ok", "model": "pose_quality_model.joblib", "classes": classes}
-    except HTTPException as exc:
-        raise exc
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
