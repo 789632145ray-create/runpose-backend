@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 
 # MongoDB（NoSQL，存放姿勢節點資料，供監督式學習使用）
 from bson import ObjectId
-from mongo_util import make_mongo_client
+from mongo_util import make_mongo_client, ping_mongo
 from pymongo import DESCENDING
 
 # ---------------------------------------------------------------------------
@@ -206,6 +206,14 @@ app.add_middleware(
 @app.get("/")
 def health() -> dict:
     return {"status": "ok", "service": "pose-auth"}
+
+
+@app.get("/health/mongo")
+def health_mongo() -> dict:
+    ok, msg = ping_mongo(mongo_client)
+    if ok:
+        return {"status": "ok", "mongo": msg}
+    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
 
 
 @app.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)

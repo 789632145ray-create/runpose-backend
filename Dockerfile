@@ -1,12 +1,14 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# scikit-learn 需要編譯/執行時函式庫
+# scikit-learn 需要編譯/執行時函式庫；ca-certificates + openssl 供 Atlas TLS
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
     ca-certificates \
+    openssl \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
