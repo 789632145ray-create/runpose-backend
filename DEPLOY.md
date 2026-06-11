@@ -45,10 +45,35 @@ Railway / Render（FastAPI 容器）
    | `POSE_DB_PATH` | `/data/app.db` |
    | `POSE_RELOAD` | `0` |
 
-5. **Settings** → **Volumes** → 掛載 `/data`（保存 SQLite 帳號資料）
-6. **Settings** → **Networking** → **Generate Domain**，得到網址如：
+6. **掛載 Volume（保存 SQLite 帳號）** — ⚠️ **不在 Settings 裡**
+
+   Railway 新版介面沒有 Settings → Volumes，請用以下任一方式：
+
+   **方式 A（網頁）**
+   1. 進入 Railway 專案的**架構畫布**（有服務方塊的那頁）
+   2. 按 **`⌘ + K`**（Windows 用 `Ctrl + K`）開啟 Command Palette
+   3. 搜尋 **`Volume`** → 選 **Create Volume**
+   4. 選你的後端 **Service**，Mount Path 填 **`/data`**
+   5. 重新 Deploy 一次
+
+   **方式 B（右鍵）**  
+   在架構畫布**空白處右鍵** → 選建立 Volume 的選項 → Mount Path 填 `/data`
+
+   **方式 C（CLI）**
+   ```bash
+   npm i -g @railway/cli   # 或 brew install railway
+   railway login
+   railway link            # 選你的專案
+   railway volume add --mount-path /data
+   ```
+
+   > **暫時跳過 Volume 也可以**：先完成部署、Generate Domain、App 能登入即可。  
+   > 沒 Volume 時請把 `POSE_DB_PATH` 改成 **`/app/app.db`**（不要用 `/data/app.db`）。  
+   > 重新部署後帳號會消失（需再註冊）；姿勢節點在 MongoDB Atlas 不受影響。
+
+7. **Networking** → **Generate Domain**，得到網址如：
    `https://pose-production-xxxx.up.railway.app`
-7. 等部署完成，瀏覽器開啟該網址應看到 `{"status":"ok",...}`
+8. 等部署完成，瀏覽器開啟該網址應看到 `{"status":"ok",...}`
 
 ### 還沒有 GitHub repo？（本機 pose 尚未上傳）
 
@@ -125,6 +150,12 @@ A: 連 **HTTPS 雲端** 時通常不會。只有 Debug 模擬器連本機 localh
 
 **Q: 沒網路能用嗎？**  
 A: 已登入過的使用者仍可進 App 做**本機姿勢偵測**與看**本機歷史紀錄**；登入、上傳、AI 辨識需要網路。
+
+**Q: Build 失敗「Failed to build an image」（幾秒就失敗）？**  
+A: 幾乎一定是 **Root Directory 設錯**。選 `runpose-backend` repo 時，Root Directory 必須**留空**（不要填 `backend`）。到 Service → **Settings** → **Source** → Root Directory 清空 → 重新 Deploy。
+
+**Q: Settings 裡找不到 Volume？**  
+A: 正常。請在架構畫布按 **`⌘K`** 搜尋 Volume，或右鍵畫布建立；Mount Path 填 `/data`。也可先跳過，之後再補。
 
 **Q: Atlas / Railway 要付費嗎？**  
 A: 兩者都有免費方案，個人使用通常足夠。Railway 免費額度用盡後可能需付費或改 Render。

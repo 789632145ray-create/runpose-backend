@@ -73,6 +73,9 @@ def get_db() -> Iterator[sqlite3.Connection]:
 
 
 def init_db() -> None:
+    db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     with get_db() as conn:
         conn.execute(
             """
