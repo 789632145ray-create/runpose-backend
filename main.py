@@ -1,10 +1,9 @@
 """
 Pose App 後端：帳號註冊 / 登入 API。
 
-- 資料庫：SQLite（單檔 app.db，存放於本資料夾），帳密儲存在後端。
+- 帳號：MongoDB Atlas `users` collection（與姿勢節點同一叢集）。
 - 密碼：以 PBKDF2-SHA256 + 每個帳號獨立 salt 雜湊後儲存，絕不存明碼。
-- 登入：成功後簽發一個 HMAC 簽章的存取權杖（access token，類似 JWT），iOS 端帶在
-  Authorization: Bearer <token> 即可存取受保護端點。
+- 登入：成功後簽發 HMAC 簽章存取權杖，iOS 端帶 Authorization: Bearer <token>。
 
 啟動方式見同資料夾 README.md。
 """
@@ -17,11 +16,9 @@ import hmac
 import json
 import os
 import secrets
-import sqlite3
 import time
-from contextlib import contextmanager
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Iterator, List, Optional
+from typing import AsyncIterator, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,15 +28,11 @@ from pydantic import BaseModel, Field
 from bson import ObjectId
 from mongo_util import make_mongo_client, ping_mongo
 from pymongo import DESCENDING
+from pymongo.errors import DuplicateKeyError
 
 # ---------------------------------------------------------------------------
 # 設定
 # ---------------------------------------------------------------------------
-
-DB_PATH = os.environ.get(
-    "POSE_DB_PATH",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.db"),
-)
 
 # 權杖簽章金鑰：正式環境請改用環境變數，不要寫死在程式碼。
 SECRET_KEY = os.environ.get("POSE_SECRET_KEY", "dev-only-change-me-in-production")
@@ -57,38 +50,15 @@ MONGO_DB_NAME = os.environ.get("POSE_MONGO_DB", "pose")
 VALID_LABELS = {"good", "bad"}
 
 
-# ---------------------------------------------------------------------------
-# 資料庫
-# ---------------------------------------------------------------------------
+# MongoDB（帳號 + 姿勢節點，皆存 Atlas）
+mongo_client = make_mongo_client(MONGO_URL)
+mongo_db = mongo_client[MONGO_DB_NAME]
+users_col = mongo_db["users"]
+pose_sessions = mongo_db["pose_sessions"]
 
 
-@contextmanager
-def get_db() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def init_db() -> None:
-    db_dir = os.path.dirname(os.path.abspath(DB_PATH))
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    with get_db() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                created_at REAL NOT NULL
-            );
-            """
-        )
+def init_mongo_indexes() -> None:
+    users_col.create_index("username", unique=True)
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +158,7 @@ class ChangePasswordIn(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    init_db()
+    init_mongo_indexes()
     yield
 
 
@@ -216,6 +186,18 @@ def health_mongo() -> dict:
     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
 
 
+@app.get("/health/auth")
+def health_auth() -> dict:
+    ok, msg = ping_mongo(mongo_client)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=msg)
+    return {
+        "status": "ok",
+        "storage": "mongodb_atlas",
+        "users": users_col.count_documents({}),
+    }
+
+
 @app.get("/health/model")
 def health_model() -> dict:
     try:
@@ -234,13 +216,19 @@ def register(creds: Credentials) -> TokenResponse:
     salt = secrets.token_bytes(16)
     password_hash = hash_password(creds.password, salt)
 
-    with get_db() as conn:
-        existing = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-        if existing is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="此帳號已存在，請改用其他帳號或直接登入")
-        conn.execute(
-            "INSERT INTO users (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)",
-            (username, password_hash, salt.hex(), time.time()),
+    try:
+        users_col.insert_one(
+            {
+                "username": username,
+                "password_hash": password_hash,
+                "salt": salt.hex(),
+                "created_at": time.time(),
+            }
+        )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="此帳號已存在，請改用其他帳號或直接登入",
         )
 
     return TokenResponse(access_token=create_token(username), username=username)
@@ -249,11 +237,7 @@ def register(creds: Credentials) -> TokenResponse:
 @app.post("/auth/login", response_model=TokenResponse)
 def login(creds: Credentials) -> TokenResponse:
     username = creds.username.strip().lower()
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT username, password_hash, salt FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
+    row = users_col.find_one({"username": username})
 
     if row is None or not verify_password(creds.password, row["salt"], row["password_hash"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="帳號或密碼錯誤")
@@ -271,20 +255,16 @@ def change_password(payload: ChangePasswordIn, username: str = Depends(current_u
     if payload.current_password == payload.new_password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="新密碼不可與目前密碼相同")
 
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT password_hash, salt FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
-        if row is None or not verify_password(payload.current_password, row["salt"], row["password_hash"]):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="目前密碼錯誤")
+    row = users_col.find_one({"username": username})
+    if row is None or not verify_password(payload.current_password, row["salt"], row["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="目前密碼錯誤")
 
-        salt = secrets.token_bytes(16)
-        new_hash = hash_password(payload.new_password, salt)
-        conn.execute(
-            "UPDATE users SET password_hash = ?, salt = ? WHERE username = ?",
-            (new_hash, salt.hex(), username),
-        )
+    salt = secrets.token_bytes(16)
+    new_hash = hash_password(payload.new_password, salt)
+    users_col.update_one(
+        {"username": username},
+        {"$set": {"password_hash": new_hash, "salt": salt.hex()}},
+    )
 
     return {"ok": True}
 
@@ -292,9 +272,6 @@ def change_password(payload: ChangePasswordIn, username: str = Depends(current_u
 # ---------------------------------------------------------------------------
 # 姿勢節點（NoSQL / MongoDB）：監督式學習資料收集
 # ---------------------------------------------------------------------------
-
-mongo_client = make_mongo_client(MONGO_URL)
-pose_sessions = mongo_client[MONGO_DB_NAME]["pose_sessions"]
 
 
 class PoseNode(BaseModel):

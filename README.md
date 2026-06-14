@@ -2,7 +2,7 @@
 
 以 **FastAPI** 提供：
 
-1. **帳號註冊 / 登入**（SQLite，密碼以 PBKDF2-SHA256 + 獨立 salt 雜湊儲存，登入回傳存取權杖）。
+1. **帳號註冊 / 登入**（MongoDB Atlas `users` collection，密碼以 PBKDF2-SHA256 + 獨立 salt 雜湊儲存，登入回傳存取權杖）。
 2. **姿勢節點資料庫（MongoDB / NoSQL）**：App 偵測後可帶「好 / 壞」標籤上傳整段節點資料，
    作為**監督式學習**的訓練資料；附 `train.py` 直接訓練二元分類模型。
 
@@ -31,7 +31,7 @@ brew services start mongodb-community   # 背景常駐，開機自動啟動
 預設連線為 `mongodb://localhost:27017`，資料庫名 `pose`、集合 `pose_sessions`。
 可用環境變數覆寫：`POSE_MONGO_URL`、`POSE_MONGO_DB`。
 
-> 沒有 MongoDB 時，帳號登入功能仍可運作；只有「上傳姿勢節點 / 訓練」相關端點會回 503。
+> 沒有 MongoDB 時，帳號登入與姿勢節點上傳皆無法運作；請設定 `POSE_MONGO_URL` 指向 Atlas 或本機 MongoDB。
 
 ## 2. 啟動
 
@@ -46,7 +46,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 - 本機：<http://127.0.0.1:8000>
 - 互動式 API 文件（Swagger）：<http://127.0.0.1:8000/docs>
-- 資料庫檔會自動建立在 `backend/app.db`
+- 帳號與姿勢節點皆存 MongoDB（`users`、`pose_sessions` collections）
+- 健康檢查：`GET /health/auth`、`GET /health/mongo`
 
 > `--host 0.0.0.0` 讓區域網路內的實機 iPhone 也能連線。
 
