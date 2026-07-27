@@ -70,7 +70,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 | GET  | `/` | 健康檢查 | — |
 | POST | `/auth/register` | 註冊（同時回傳權杖） | `{"username","password"}` |
 | POST | `/auth/login` | 登入，回傳權杖 | `{"username","password"}` |
-| GET  | `/auth/me` | 取得目前登入者（需帶權杖） | Header `Authorization: Bearer <token>` |
+| GET  | `/auth/me` | 取得目前登入者與個人資料（需帶權杖） | Header `Authorization: Bearer <token>` |
+| PUT  | `/auth/profile` | 填寫／更新個人資料（需帶權杖） | `{"display_name","gender","age","height_cm","weight_kg"}` |
 | POST | `/auth/change-password` | 修改密碼（需帶權杖） | `{"current_password","new_password"}` |
 | POST | `/poses` | 上傳一段姿勢節點 + 標籤（整段，需帶權杖） | `{"label":"good\|bad","frames":[...],...}` |
 | GET  | `/poses` | 列出自己上傳過的 session（不含 frames） | Header `Authorization: Bearer <token>` |

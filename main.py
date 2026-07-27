@@ -145,6 +145,20 @@ class TokenResponse(BaseModel):
 
 class MeResponse(BaseModel):
     username: str
+    display_name: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    profile_completed: bool = False
+
+
+class ProfileUpdateIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=32)
+    gender: str = Field(description="male / female / other")
+    age: int = Field(ge=1, le=120)
+    height_cm: float = Field(ge=50, le=250)
+    weight_kg: float = Field(ge=20, le=300)
 
 
 class ChangePasswordIn(BaseModel):
@@ -245,9 +259,60 @@ def login(creds: Credentials) -> TokenResponse:
     return TokenResponse(access_token=create_token(username), username=username)
 
 
+def _profile_completed(row: dict) -> bool:
+    for key in ("display_name", "gender", "age", "height_cm", "weight_kg"):
+        if row.get(key) in (None, ""):
+            return False
+    return True
+
+
+def _me_response(row: dict) -> MeResponse:
+    return MeResponse(
+        username=row["username"],
+        display_name=row.get("display_name"),
+        gender=row.get("gender"),
+        age=row.get("age"),
+        height_cm=row.get("height_cm"),
+        weight_kg=row.get("weight_kg"),
+        profile_completed=_profile_completed(row),
+    )
+
+
 @app.get("/auth/me", response_model=MeResponse)
 def me(username: str = Depends(current_user)) -> MeResponse:
-    return MeResponse(username=username)
+    row = users_col.find_one({"username": username})
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到使用者")
+    return _me_response(row)
+
+
+@app.put("/auth/profile", response_model=MeResponse)
+def update_profile(payload: ProfileUpdateIn, username: str = Depends(current_user)) -> MeResponse:
+    gender = payload.gender.strip().lower()
+    if gender not in {"male", "female", "other"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="gender 必須是 male、female 或 other")
+
+    display_name = payload.display_name.strip()
+    if not display_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="姓名不可為空")
+
+    users_col.update_one(
+        {"username": username},
+        {
+            "$set": {
+                "display_name": display_name,
+                "gender": gender,
+                "age": payload.age,
+                "height_cm": payload.height_cm,
+                "weight_kg": payload.weight_kg,
+                "profile_updated_at": time.time(),
+            }
+        },
+    )
+    row = users_col.find_one({"username": username})
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到使用者")
+    return _me_response(row)
 
 
 @app.post("/auth/change-password")
